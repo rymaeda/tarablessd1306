@@ -31,8 +31,4 @@ Keep the component working on newer ESP-IDF versions while reducing reliance on 
 
 **Validation**
 - Workspace diagnostics were checked and no errors were reported.
-
-If you want, I can also turn this into:
-1. a short commit message,
-2. a pull request description,
-3. or a more formal changelog entry.
+- Examples run with minor changes.
