@@ -1,3 +1,11 @@
+if(NOT DEFINED IDF_PATH)
+  set(IDF_PATH "$ENV{IDF_PATH}")
+endif()
+
+if(NOT IDF_PATH)
+  set(IDF_PATH "$ENV{USERPROFILE}/.platformio/packages/framework-espidf")
+endif()
+
 idf_component_register(
   SRCS
   "ssd1306.c"
@@ -18,4 +26,5 @@ idf_component_register(
   "fonts/font_tarable7seg_32x64.c"
 
   INCLUDE_DIRS "."
+  REQUIRES esp_driver_i2c esp_driver_spi esp_driver_gpio freertos
 )

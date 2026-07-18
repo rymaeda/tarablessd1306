@@ -1,15 +1,21 @@
 /**
  * Copyright (c) 2017-2018 Tara Keeling
- * 
+ *
  * This software is released under the MIT License.
  * https://opensource.org/licenses/MIT
+ *
+ * Updated for ESP-IDF 5.x / 6.x new I2C master driver API.
  */
 
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include <driver/i2c.h>
+#include <stdlib.h>
+#include "sdkconfig.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <driver/i2c_master.h>
 #include <driver/gpio.h>
 #include "ssd1306.h"
 #include "ssd1306_default_if.h"
@@ -22,12 +28,16 @@
 #if defined CONFIG_SSD1306_ENABLE_DEFAULT_I2C_INTERFACE
 
 static const int I2CDisplaySpeed = CONFIG_SSD1306_DEFAULT_I2C_SPEED;
-static const int I2CPortNumber = CONFIG_SSD1306_DEFAULT_I2C_PORT_NUMBER;
-static const int SCLPin = CONFIG_SSD1306_DEFAULT_I2C_SCL_PIN;
-static const int SDAPin = CONFIG_SSD1306_DEFAULT_I2C_SDA_PIN;
+static const int I2CPortNumber   = CONFIG_SSD1306_DEFAULT_I2C_PORT_NUMBER;
+static const int SCLPin          = CONFIG_SSD1306_DEFAULT_I2C_SCL_PIN;
+static const int SDAPin          = CONFIG_SSD1306_DEFAULT_I2C_SDA_PIN;
 
-static const int SSD1306_I2C_COMMAND_MODE = 0x00;
-static const int SSD1306_I2C_DATA_MODE = 0x40;
+static const uint8_t SSD1306_I2C_COMMAND_MODE = 0x00;
+static const uint8_t SSD1306_I2C_DATA_MODE    = 0x40;
+
+/* Handles for the new ESP-IDF I2C master driver */
+static i2c_master_bus_handle_t I2CBusHandle = NULL;
+static i2c_master_dev_handle_t I2CDevHandle = NULL;
 
 static bool I2CDefaultWriteBytes( int Address, bool IsCommand, const uint8_t* Data, size_t DataLength );
 static bool I2CDefaultWriteCommand( struct SSD1306_Device* Display, SSDCmd Command );
@@ -35,26 +45,24 @@ static bool I2CDefaultWriteData( struct SSD1306_Device* Display, const uint8_t* 
 static bool I2CDefaultReset( struct SSD1306_Device* Display );
 
 /*
- * Initializes the i2c master with the parameters specified
+ * Initializes the i2c master bus with the parameters specified
  * in the component configuration in sdkconfig.h.
- * 
+ *
  * Returns true on successful init of the i2c bus.
  */
 bool SSD1306_I2CMasterInitDefault( void ) {
-    i2c_config_t Config;
+    i2c_master_bus_config_t BusConfig = {
+        .clk_source             = I2C_CLK_SRC_DEFAULT,
+        .i2c_port               = (i2c_port_num_t) I2CPortNumber,
+        .scl_io_num             = (gpio_num_t) SCLPin,
+        .sda_io_num             = (gpio_num_t) SDAPin,
+        .glitch_ignore_cnt      = 7,
+        .flags.enable_internal_pullup = true,
+    };
 
-    memset( &Config, 0, sizeof( i2c_config_t ) );
-
-    Config.mode = I2C_MODE_MASTER;
-    Config.sda_io_num = SDAPin;
-    Config.sda_pullup_en = GPIO_PULLUP_ENABLE;
-    Config.scl_io_num = SCLPin;
-    Config.scl_pullup_en = GPIO_PULLUP_ENABLE;
-    Config.master.clk_speed = I2CDisplaySpeed;
-
-    ESP_ERROR_CHECK_NONFATAL( i2c_param_config( I2CPortNumber, &Config ), return false );
-    ESP_ERROR_CHECK_NONFATAL( i2c_driver_install( I2CPortNumber, Config.mode, 0, 0, 0 ), return false );
-
+    if ( i2c_new_master_bus( &BusConfig, &I2CBusHandle ) != ESP_OK ) {
+        return false;
+    }
     return true;
 }
 
@@ -64,41 +72,40 @@ bool SSD1306_I2CMasterInitDefault( void ) {
  * Returns true if device is connected.
  */
 bool SSD1306_IsDisplayAttached( int I2CAddress ) {
-    i2c_cmd_handle_t CommandHandle = NULL;
-    bool Result = false;
-    
-    if ( ( CommandHandle = i2c_cmd_link_create( ) ) != NULL ) {
-        i2c_master_start( CommandHandle );
-            i2c_master_write_byte( CommandHandle, ( I2CAddress << 1 ) | I2C_MASTER_WRITE, true );
-            i2c_master_write_byte( CommandHandle, SSD1306_I2C_COMMAND_MODE, true );
-            i2c_master_write_byte( CommandHandle, 0, true );
-        i2c_master_stop( CommandHandle );
-
-        Result = i2c_master_cmd_begin( I2CPortNumber, CommandHandle, pdMS_TO_TICKS( 1000 ) ) == ESP_OK ? true : false;
-        i2c_cmd_link_delete( CommandHandle );
+    if ( I2CBusHandle == NULL ) {
+        return false;
     }
-
-    return Result;
+    return i2c_master_probe( I2CBusHandle, (uint16_t) I2CAddress, 1000 ) == ESP_OK;
 }
 
 /*
  * Attaches a display to the I2C bus using default communication functions.
- * 
+ *
  * Params:
  * DisplayHandle: Pointer to your SSD1306_Device object
  * Width: Width of display
  * Height: Height of display
  * I2CAddress: Address of your display
- * RSTPin: Optional GPIO pin to use for hardware reset, if none pass -1 for this parameter.
- * 
+ * RSTPin: Optional GPIO pin to use for hardware reset, if none pass -1.
+ *
  * Returns true on successful init of display.
  */
 bool SSD1306_I2CMasterAttachDisplayDefault( struct SSD1306_Device* DisplayHandle, int Width, int Height, int I2CAddress, int RSTPin ) {
+    i2c_device_config_t DevConfig = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address  = (uint16_t) I2CAddress,
+        .scl_speed_hz    = (uint32_t) I2CDisplaySpeed,
+    };
+
     NullCheck( DisplayHandle, return false );
 
+    if ( i2c_master_bus_add_device( I2CBusHandle, &DevConfig, &I2CDevHandle ) != ESP_OK ) {
+        return false;
+    }
+
     if ( RSTPin >= 0 ) {
-        ESP_ERROR_CHECK_NONFATAL( gpio_set_direction( RSTPin, GPIO_MODE_OUTPUT ), return false );
-        ESP_ERROR_CHECK_NONFATAL( gpio_set_level( RSTPin, 1 ), return false );
+        ESP_ERROR_CHECK_NONFATAL( gpio_set_direction( (gpio_num_t) RSTPin, GPIO_MODE_OUTPUT ), return false );
+        ESP_ERROR_CHECK_NONFATAL( gpio_set_level( (gpio_num_t) RSTPin, 1 ), return false );
     }
 
     return SSD1306_IsDisplayAttached( I2CAddress ) && SSD1306_Init_I2C( DisplayHandle,
@@ -113,32 +120,35 @@ bool SSD1306_I2CMasterAttachDisplayDefault( struct SSD1306_Device* DisplayHandle
 }
 
 static bool I2CDefaultWriteBytes( int Address, bool IsCommand, const uint8_t* Data, size_t DataLength ) {
-    i2c_cmd_handle_t* CommandHandle = NULL;
-    static uint8_t ModeByte = 0;
+    uint8_t* Buffer = NULL;
+    bool Result     = false;
+    (void) Address; /* Address is encoded in the device handle */
 
     NullCheck( Data, return false );
 
-    if ( ( CommandHandle = i2c_cmd_link_create( ) ) != NULL ) {
-        ModeByte = ( IsCommand == true ) ? SSD1306_I2C_COMMAND_MODE: SSD1306_I2C_DATA_MODE;
-
-        ESP_ERROR_CHECK_NONFATAL( i2c_master_start( CommandHandle ), return false );
-            ESP_ERROR_CHECK_NONFATAL( i2c_master_write_byte( CommandHandle, ( Address << 1 ) | I2C_MASTER_WRITE, true ), return false );
-            ESP_ERROR_CHECK_NONFATAL( i2c_master_write_byte( CommandHandle, ModeByte, true ), return false );
-            ESP_ERROR_CHECK_NONFATAL( i2c_master_write( CommandHandle, ( uint8_t* ) Data, DataLength, true ), return false );
-        ESP_ERROR_CHECK_NONFATAL( i2c_master_stop( CommandHandle ), return false );
-
-        ESP_ERROR_CHECK_NONFATAL( i2c_master_cmd_begin( I2CPortNumber, CommandHandle, pdMS_TO_TICKS( 1000 ) ), return false );
-        i2c_cmd_link_delete( CommandHandle );
+    if ( I2CDevHandle == NULL ) {
+        return false;
     }
 
-    return true;
+    /* Prepend the SSD1306 control byte (command or data mode) */
+    Buffer = (uint8_t*) malloc( DataLength + 1 );
+    if ( Buffer == NULL ) {
+        return false;
+    }
+
+    Buffer[0] = IsCommand ? SSD1306_I2C_COMMAND_MODE : SSD1306_I2C_DATA_MODE;
+    memcpy( &Buffer[1], Data, DataLength );
+
+    Result = i2c_master_transmit( I2CDevHandle, Buffer, DataLength + 1, 1000 ) == ESP_OK;
+    free( Buffer );
+    return Result;
 }
 
 static bool I2CDefaultWriteCommand( struct SSD1306_Device* Display, SSDCmd Command ) {
-    uint8_t CommandByte = ( uint8_t ) Command;
+    uint8_t CommandByte = (uint8_t) Command;
 
     NullCheck( Display, return false );
-    return I2CDefaultWriteBytes( Display->Address, true, ( const uint8_t* ) &CommandByte, 1 );
+    return I2CDefaultWriteBytes( Display->Address, true, &CommandByte, 1 );
 }
 
 static bool I2CDefaultWriteData( struct SSD1306_Device* Display, const uint8_t* Data, size_t DataLength ) {
@@ -152,12 +162,12 @@ static bool I2CDefaultReset( struct SSD1306_Device* Display ) {
     NullCheck( Display, return false );
 
     if ( Display->RSTPin >= 0 ) {
-        ESP_ERROR_CHECK_NONFATAL( gpio_set_level( Display->RSTPin, 0 ), return true );
+        ESP_ERROR_CHECK_NONFATAL( gpio_set_level( (gpio_num_t) Display->RSTPin, 0 ), return true );
             vTaskDelay( pdMS_TO_TICKS( 100 ) );
-        ESP_ERROR_CHECK_NONFATAL( gpio_set_level( Display->RSTPin, 1 ), return true );
+        ESP_ERROR_CHECK_NONFATAL( gpio_set_level( (gpio_num_t) Display->RSTPin, 1 ), return true );
     }
 
     return true;
 }
 
-#endif
+#endif /* CONFIG_SSD1306_ENABLE_DEFAULT_I2C_INTERFACE */
