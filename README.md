@@ -15,9 +15,9 @@ Check out the wiki where most of the relevant information is.
 
 ***Examples:*** https://github.com/TaraHoleInIt/tarablessd1306_examples
 
-# **Fork Summary**  
+# **Fork Summary and Additional Comments**  
 
-Updated the `tarablessd1306` component to improve compatibility with current ESP-IDF APIs V6.
+Updated the `tarablessd1306` component to improve compatibility with current ESP-IDF APIs V6 (July 2026).
 
 **Main changes**
 - Replaced the legacy `driver/i2c_master.h` usage with the current `driver/i2c.h` API in default_if_i2c.c.
@@ -54,3 +54,64 @@ In ESP-IDF projects, the default pin assignments for I²C (SDA and SCL) are stor
        bash
        idf.py build
 The new pin assignments will be written into the sdkconfig file and applied automatically during compilation.
+
+### ⚠️ Special characters showing as `Â°`, `Âª`, `Âº`
+
+When displaying special characters like `°`, `ª`, and `º` on the ESP32 screen, they may incorrectly appear with a preceding `Â` (for example: `Â°` instead of `°`).
+
+#### Cause
+The source file (`main.c`) is saved in **UTF-8 encoding**. In UTF-8, these characters are encoded as **two bytes** each:
+- `°` → `0xC2 0xB0`  
+- `ª` → `0xC2 0xAA`  
+- `º` → `0xC2 0xBA`  
+
+However, the font file used (`ssd1306_font.h`) is indexed by **single-byte values** (Latin-1/CP1252 style). Since there is no UTF-8 decoding, the renderer interprets each byte separately:
+- The first byte `0xC2` maps to the glyph `Â`.  
+- The second byte maps to the intended special character.  
+
+This explains why `Â` always appears before the desired symbol.
+
+#### Fix
+Replace UTF-8 literal characters with **single-byte escape sequences**. This ensures only one byte is emitted per character:
+
+```c
+printf("Hello!\xB0\xAA\xBA");
+```
+
+| Character | Escape | Hex Value |
+| --- | --- | --- |
+| ``¡`` | ``\\xA1`` | 0xA1 |
+| ``¢`` | ``\\xA2`` | 0xA2 |
+| ``£`` | ``\\xA3`` | 0xA3 |
+| ``¤`` | ``\\xA4`` | 0xA4 |
+| ``¥`` | ``\\xA5`` | 0xA5 |
+| ``¦`` | ``\\xA6`` | 0xA6 |
+| ``§`` | ``\\xA7`` | 0xA7 |
+| ``¨`` | ``\\xA8`` | 0xA8 |
+| ``©`` | ``\\xA9`` | 0xA9 |
+| ``ª`` | ``\\xAA`` | 0xAA |
+| ``«`` | ``\\xAB`` | 0xAB |
+| ``¬`` | ``\\xAC`` | 0xAC |
+| ``­`` (soft hyphen) | ``\\xAD`` | 0xAD |
+| ``®`` | ``\\xAE`` | 0xAE |
+| ``¯`` | ``\\xAF`` | 0xAF |
+| ``°`` | ``\\xB0`` | 0xB0 |
+| ``±`` | ``\\xB1`` | 0xB1 |
+| ``²`` | ``\\xB2`` | 0xB2 |
+| ``³`` | ``\\xB3`` | 0xB3 |
+| ``´`` | ``\\xB4`` | 0xB4 |
+| ``µ`` | ``\\xB5`` | 0xB5 |
+| ``¶`` | ``\\xB6`` | 0xB6 |
+| ``·`` | ``\\xB7`` | 0xB7 |
+| ``¸`` | ``\\xB8`` | 0xB8 |
+| ``¹`` | ``\\xB9`` | 0xB9 |
+| ``º`` | ``\\xBA`` | 0xBA |
+| ``»`` | ``\\xBB`` | 0xBB |
+| ``¼`` | ``\\xBC`` | 0xBC |
+| ``½`` | ``\\xBD`` | 0xBD |
+| ``¾`` | ``\\xBE`` | 0xBE |
+| ``¿`` | ``\\xBF`` | 0xBF |
+
+This eliminates the extra `0xC2` byte and the display will show the correct characters without the unwanted `Â`.
+
+---
