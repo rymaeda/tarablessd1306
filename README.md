@@ -117,3 +117,26 @@ printf("Hello!\xB0\xAA\xBA");
 This eliminates the extra `0xC2` byte and the display will show the correct characters without the unwanted `Â`.
 
 ---
+
+# Fontes Renderizadas
+
+## Tarable 7-Seg
+![Tarable7Seg 16x32](font_tarable7seg_16x32.png)
+![Tarable7Seg 32x64](font_tarable7seg_32x64.png)
+
+## Liberation Mono
+![Liberation Mono 17x30](font_liberation_mono_17x30.png)
+![Liberation Mono 13x21](font_liberation_mono_13x21.png)
+![Liberation Mono 9x15](font_liberation_mono_9x15.png)
+
+## Droid Sans Mono
+![Droid Sans Mono 16x31](font_droid_sans_mono_16x31.png)
+![Droid Sans Mono 13x24](font_droid_sans_mono_13x24.png)
+![Droid Sans Mono 7x13](font_droid_sans_mono_7x13.png)
+
+## Droid Sans Fallback
+![Droid Sans Fallback 24x28](font_droid_sans_fallback_24x28.png)
+![Droid Sans Fallback 15x17](font_droid_sans_fallback_15x17.png)
+![Droid Sans Fallback 11x13](font_droid_sans_fallback_11x13.png)
+
+
