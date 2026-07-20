@@ -118,7 +118,7 @@ This eliminates the extra `0xC2` byte and the display will show the correct char
 
 ---
 
-# Fontes Renderizadas
+# Renderized Fonts
 
 ## Tarable 7-Seg
 ![Tarable7Seg 16x32](font_tarable7seg_16x32.png)
