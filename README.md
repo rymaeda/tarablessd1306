@@ -55,6 +55,8 @@ In ESP-IDF projects, the default pin assignments for I²C (SDA and SCL) are stor
        idf.py build
 The new pin assignments will be written into the sdkconfig file and applied automatically during compilation.
 
+---
+
 ### ⚠️ Special characters showing as `Â°`, `Âª`, `Âº`
 
 When displaying special characters like `°`, `ª`, and `º` on the ESP32 screen, they may incorrectly appear with a preceding `Â` (for example: `Â°` instead of `°`).
