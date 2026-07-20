@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <ctype.h>
 #include <math.h>
 #include "ssd1306.h"
 #include "ssd1306_draw.h"
@@ -27,8 +28,33 @@ static const uint8_t* GetCharPtr( const struct SSD1306_FontDef* Font, char Chara
     return &Font->FontData[ ( Character - Font->StartChar ) * ( ( Font->Width * ( RoundUpFontHeight( Font ) / 8 ) ) + 1 ) ];
 }
 
+static inline bool IsCharInFontRange( const struct SSD1306_FontDef* Font, char Character ) {
+    unsigned char Ch = ( unsigned char ) Character;
+    unsigned char Start = ( unsigned char ) Font->StartChar;
+    unsigned char End = ( unsigned char ) Font->EndChar;
+
+    return ( Ch >= Start ) && ( Ch <= End );
+}
+
+static char NormalizeCharacterForFont( const struct SSD1306_FontDef* Font, char Character ) {
+    if ( IsCharInFontRange( Font, Character ) == true ) {
+        return Character;
+    }
+
+    if ( Character >= 'a' && Character <= 'z' ) {
+        char Upper = ( char ) toupper( ( unsigned char ) Character );
+
+        if ( IsCharInFontRange( Font, Upper ) == true ) {
+            return Upper;
+        }
+    }
+
+    return Character;
+}
+
 void SSD1306_FontDrawChar( struct SSD1306_Device* DisplayHandle, char Character, int x, int y, int Color ) {
     const uint8_t* GlyphData = NULL;
+    char DrawChar = Character;
     int GlyphColumnLen = 0;
     int CharStartX =  0;
     int CharStartY = 0;
@@ -44,15 +70,17 @@ void SSD1306_FontDrawChar( struct SSD1306_Device* DisplayHandle, char Character,
 
     NullCheck( DisplayHandle, return );
     NullCheck( DisplayHandle->Font, return );
-    
-    NullCheck( ( GlyphData = GetCharPtr( DisplayHandle->Font, Character ) ), return );
 
-    if ( Character >= DisplayHandle->Font->StartChar || Character <= DisplayHandle->Font->EndChar ) {
+    DrawChar = NormalizeCharacterForFont( DisplayHandle->Font, Character );
+    
+    NullCheck( ( GlyphData = GetCharPtr( DisplayHandle->Font, DrawChar ) ), return );
+
+    if ( IsCharInFontRange( DisplayHandle->Font, DrawChar ) == true ) {
         /* The first byte in the glyph data is the width of the character in pixels, skip over */
         GlyphData++;
         GlyphColumnLen = RoundUpFontHeight( DisplayHandle->Font ) / 8;
         
-        CharWidth = SSD1306_FontGetCharWidth( DisplayHandle, Character );
+        CharWidth = SSD1306_FontGetCharWidth( DisplayHandle, DrawChar );
         CharHeight = SSD1306_FontGetHeight( DisplayHandle );
 
         CharStartX = x;
@@ -139,13 +167,16 @@ int SSD1306_FontGetHeight( struct SSD1306_Device* Display ) {
 
 int SSD1306_FontGetCharWidth( struct SSD1306_Device* Display, char Character ) {
     const uint8_t* CharPtr = NULL;
+    char WidthChar = Character;
     int Width = 0;
 
     NullCheck( Display, return 0 );
     NullCheck( Display->Font, return 0 );
+
+    WidthChar = NormalizeCharacterForFont( Display->Font, Character );
     
-    if ( Character >= Display->Font->StartChar && Character <= Display->Font->EndChar ) {
-        CharPtr = GetCharPtr( Display->Font, Character );
+    if ( IsCharInFontRange( Display->Font, WidthChar ) == true ) {
+        CharPtr = GetCharPtr( Display->Font, WidthChar );
 
         Width = ( Display->Font->Monospace == true ) ? Display->Font->Width : *CharPtr;
 
@@ -183,6 +214,7 @@ int SSD1306_FontGetCharHeight( struct SSD1306_Device* Display ) {
 }
 
 int SSD1306_FontMeasureString( struct SSD1306_Device* Display, const char* Text ) {
+    char WidthChar = 0;
     int Width = 0;
     int Len = 0;
 
@@ -191,8 +223,10 @@ int SSD1306_FontMeasureString( struct SSD1306_Device* Display, const char* Text 
     NullCheck( Text, return 0 );
 
     for ( Len = strlen( Text ); Len >= 0; Len--, Text++ ) {
-        if ( *Text >= Display->Font->StartChar && *Text <= Display->Font->EndChar ) {
-            Width+= SSD1306_FontGetCharWidth( Display, *Text );
+        WidthChar = NormalizeCharacterForFont( Display->Font, *Text );
+
+        if ( IsCharInFontRange( Display->Font, WidthChar ) == true ) {
+            Width+= SSD1306_FontGetCharWidth( Display, WidthChar );
         }
     }
 
