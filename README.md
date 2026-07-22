@@ -15,6 +15,9 @@ Check out the wiki where most of the relevant information is.
 
 ***Examples:*** https://github.com/TaraHoleInIt/tarablessd1306_examples
 
+---
+---
+
 # **Fork Summary and Additional Comments**  
 
 Updated the `tarablessd1306` component to improve compatibility with current ESP-IDF APIs V6 (July 2026).
