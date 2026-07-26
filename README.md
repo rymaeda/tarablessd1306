@@ -22,6 +22,8 @@ Check out the wiki where most of the relevant information is.
 
 Updated the `tarablessd1306` component to improve compatibility with current ESP-IDF APIs V6 (July 2026).
 
+![esp32c6sm-board.JPG](esp32c6sm-board.JPG)
+
 **Main changes**
 - Replaced the legacy `driver/i2c_master.h` usage with the current `driver/i2c.h` API in default_if_i2c.c.
 - Added I2C bus initialization using `i2c_param_config` and `i2c_driver_install`.
